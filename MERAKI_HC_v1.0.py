@@ -9,7 +9,7 @@ a = today + datetime.timedelta(hours=1)
 yesterday = a - datetime.timedelta(days=1)
 t = time.mktime((a.timetuple()))
 y = time.mktime((yesterday.timetuple()))
-orgid = "789251"
+orgid = ""
 api_key = ""
 
 
