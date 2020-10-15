@@ -1,0 +1,143 @@
+import requests
+import datetime
+import time
+import csv
+from datetime import date
+import smtplib, ssl
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import math
+
+today = datetime.datetime.now()
+a = today + datetime.timedelta(hours=1)
+yesterday = a - datetime.timedelta(days=1)
+t = time.mktime((a.timetuple()))
+y = time.mktime((yesterday.timetuple()))
+orgid = ""
+api_key = ""
+
+def filterAndmail():
+    with open(str(date.today()) + '.csv', 'r') as file:
+        reader = csv.DictReader(file)
+
+        for row in reader:
+
+            if float(row['Failed(%)']) >= 30.00:
+                a = row['Site']
+                b = row['Failed(%)']
+                t = str(a)
+                u = str(b)
+
+                subject = t + '  ' + u + '%'
+                body = ''' Good evening \n your network is shit'''
+                sender_email = "keen.han4376@gmail.com"
+                receiver_email = "hgh0222@yahoo.co.uk"
+                password = ''
+                a = datetime.date.today()
+                print(receiver_email)
+                # Create a multipart message and set headers
+                message = MIMEMultipart()
+                message["From"] = sender_email
+                message["To"] = receiver_email
+                message["Subject"] = subject
+                message["Bcc"] = receiver_email  # Recommended for mass emails
+
+                # Add body to email
+                message.attach(MIMEText(body, "plain"))
+
+                filename = "%s.csv" % (a)  # In same directory as script
+
+                # Open PDF file in binary mode
+                with open(filename) as attachment:
+                    # Add file as application/octet-stream
+                    # Email client can usually download this automatically as attachment
+                    part = MIMEBase("application", "octet-stream")
+                    part.set_payload(attachment.read())
+
+                # Encode file in ASCII characters to send by email
+                encoders.encode_base64(part)
+
+                # Add header as key/value pair to attachment part
+                part.add_header(
+                    "Content-Disposition",
+                    f"attachment; filename= {filename}",
+                )
+
+                # Add attachment to message and convert message to string
+                message.attach(part)
+                text = message.as_string()
+
+                # Log in to server using secure context and send email
+                context = ssl.create_default_context()
+                with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+                    server.login(sender_email, password)
+                    server.sendmail(sender_email, receiver_email.split((',')), text)
+
+
+def getnwlist():
+    # returns a list of all networks in an organization
+    # on failure returns a single record with 'null' name and id
+    url = "https://api.meraki.com/api/v0/organizations/%s/networks" % (orgid)
+    response = requests.get(url=url, headers={'X-Cisco-Meraki-API-Key': api_key, 'Content-Type': 'application/json'})
+    return response
+
+
+def getdata(id):
+    url = "https://api.meraki.com/api/v0/networks/{}/connectionStats?t0={}&t1={}".format(id, y, t)
+    response = requests.get(url=url, headers={'X-Cisco-Meraki-API-Key': api_key, 'Content-Type': 'application/json'})
+    return response.json()
+
+def o2(id):
+    url = "https://api.meraki.com/api/v0/networks/{}/connectionStats?t0={}&t1={}&ssid=0".format(id, y, t)
+    response = requests.get(url=url, headers={'X-Cisco-Meraki-API-Key': api_key, 'Content-Type': 'application/json'})
+    return response.json()
+
+def main():
+    Branch = getnwlist()
+    networks = Branch.json()
+
+    with open(str(date.today()) + '.csv', 'w', newline='') as f:
+        fieldnames = ['Site', 'Association', 'Authentication', 'DHCP', 'DNS', 'Total Failed Connections', 'Success',
+                      'Failed(%)']
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for get_id in networks:
+            id = get_id['id']
+            Data = getdata(id)
+            site = get_id['name']
+            CustWIFI = o2(id)
+
+            if Data == None or CustWIFI == None:
+                pass
+            elif 'assoc' in Data:
+                str(site)
+                print(site)
+
+                print(Data)
+                print(CustWIFI)
+
+
+
+                assoc = (Data['assoc']) - (CustWIFI['assoc'])
+                auth = (Data['auth'] - (CustWIFI['auth']))
+                dhcp = (Data['dhcp'] - CustWIFI['dhcp'])
+                dns = (Data['dns'] - CustWIFI['dns'])
+                success = (Data['success'] - CustWIFI['success'])
+                Total = assoc + auth + dhcp + dns + success
+                Failure =  assoc + auth + dhcp + dns
+                PC = '{0:.2f}'.format((Failure / Total * 100))
+
+                f.write('%s,%s,%s,%s,%s,%s,%s,%s\n' % (site, assoc, auth, dhcp, dns, Failure, success, PC))
+
+
+
+
+    print('Complted  ' + str(date.today()))
+
+
+
+main()
+filterAndmail()
