@@ -25,12 +25,13 @@ def filterAndmail():
         for row in reader:
 
             if float(row['Failed(%)']) >= 30.00:
-                a = row['Site']
-                b = row['Failed(%)']
-                t = str(a)
-                u = str(b)
+                RowBranch = row['Site']
+                RowFailurePc = row['Failed(%)']
+                Branch = str(RowBranch)
+                FailurePc = str(RowFailurePc)
 
-                subject = t + '  ' + u + '%'
+
+                subject = Branch + ' Wireless failures Above  ' + FailurePc + '%'
                 body = ''' Good evening \n your network is shit'''
                 sender_email = "keen.han4376@gmail.com"
                 receiver_email = "hgh0222@yahoo.co.uk"
