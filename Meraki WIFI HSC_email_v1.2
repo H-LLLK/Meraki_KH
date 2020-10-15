@@ -1,0 +1,112 @@
+import requests
+import datetime
+import time
+import csv
+from datetime import date
+import smtplib, ssl
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import math
+
+today = datetime.datetime.now()
+a = today + datetime.timedelta(hours=1)
+yesterday = a - datetime.timedelta(days=1)
+t = time.mktime((a.timetuple()))
+y = time.mktime((yesterday.timetuple()))
+orgid = "789251"
+api_key = "8f4ab6a86317a9b41e6f2af35a6011febfa87afc"
+
+
+def sendEmail(failedPercentage, site):
+
+                subject = site + ' Wireless failures Above  ' + failedPercentage + '%'
+                body = ''' Good evening \n your network is shit'''
+                sender_email = "keen.han4376@gmail.com"
+                receiver_email = "hgh0222@yahoo.co.uk"
+                password = 'hqdgpdxwjsulkjqp'
+
+                # Create a multipart message and set headers
+                message = MIMEMultipart()
+                message["From"] = sender_email
+                message["To"] = receiver_email
+                message["Subject"] = subject
+                message["Bcc"] = receiver_email  # Recommended for mass emails
+
+                # Add body to email
+                message.attach(MIMEText(body, "plain"))
+
+                # Log in to server using secure context and send email
+                context = ssl.create_default_context()
+                with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+                    server.login(sender_email, password)
+                    server.sendmail(sender_email, receiver_email.split((',')), message.as_string())
+
+
+def getNetWorkList():
+    # returns a list of all networks in an organization
+    # on failure returns a single record with 'null' name and id
+    url = "https://api.meraki.com/api/v0/organizations/%s/networks" % (orgid)
+    response = requests.get(url=url, headers={'X-Cisco-Meraki-API-Key': api_key, 'Content-Type': 'application/json'})
+    return response
+
+
+def getdata(id):
+    url = "https://api.meraki.com/api/v0/networks/{}/connectionStats?t0={}&t1={}".format(id, y, t)
+    response = requests.get(url=url, headers={'X-Cisco-Meraki-API-Key': api_key, 'Content-Type': 'application/json'})
+    return response.json()
+
+
+def o2(id):
+    url = "https://api.meraki.com/api/v0/networks/{}/connectionStats?t0={}&t1={}&ssid=0".format(id, y, t)
+    response = requests.get(url=url, headers={'X-Cisco-Meraki-API-Key': api_key, 'Content-Type': 'application/json'})
+    return response.json()
+
+
+def main():
+    branch = getNetWorkList()
+    networks = branch.json()
+    startTime = today.now()
+
+    with open(str(date.today()) + '.csv', 'w', newline='') as f:
+        fieldnames = ['Site', 'Association', 'Authentication', 'DHCP', 'DNS', 'Total Failed Connections', 'Success',
+                      'Failed(%)']
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for network in networks:
+            id = network['id']
+            detailsData = getdata(id)
+            site = network['name']
+            CustWIFI = o2(id)
+
+            if detailsData == None or CustWIFI == None:
+                pass
+            elif 'assoc' in detailsData:
+                print(site)
+                print(detailsData)
+                print(CustWIFI)
+
+                assoc = (detailsData['assoc']) - (CustWIFI['assoc'])
+                auth = (detailsData['auth'] - (CustWIFI['auth']))
+                dhcp = (detailsData['dhcp'] - CustWIFI['dhcp'])
+                dns = (detailsData['dns'] - CustWIFI['dns'])
+                success = (detailsData['success'] - CustWIFI['success'])
+                total = assoc + auth + dhcp + dns + success
+                noOfFailure = assoc + auth + dhcp + dns
+                failedRate = (noOfFailure / total * 100)
+                failedPercentage = '{0:.2f}'.format((noOfFailure / total * 100))
+
+                f.write('%s,%s,%s,%s,%s,%s,%s,%s\n' % (site, assoc, auth, dhcp, dns, noOfFailure, success, failedPercentage))
+
+                if failedRate >= 30:
+                    sendEmail(failedPercentage, site)
+
+    endTime = today.now()
+    timeTaken = endTime - startTime
+
+    print('Time taken' + str(timeTaken))
+
+
+main()
