@@ -15,8 +15,8 @@ a = today + datetime.timedelta(hours=1)
 yesterday = a - datetime.timedelta(days=1)
 t = time.mktime((a.timetuple()))
 y = time.mktime((yesterday.timetuple()))
-orgid = "789251"
-api_key = "8f4ab6a86317a9b41e6f2af35a6011febfa87afc"
+orgid = ""
+api_key = ""
 
 
 def sendEmail(failedPercentage, site):
@@ -25,7 +25,7 @@ def sendEmail(failedPercentage, site):
                 body = ''' Good evening \n your network is shit'''
                 sender_email = "keen.han4376@gmail.com"
                 receiver_email = "hgh0222@yahoo.co.uk"
-                password = 'hqdgpdxwjsulkjqp'
+                password = ''
 
                 # Create a multipart message and set headers
                 message = MIMEMultipart()
