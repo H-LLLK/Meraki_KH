@@ -1,0 +1,63 @@
+import requests
+import datetime
+import time
+import csv
+from datetime import date
+import smtplib, ssl
+from datetime import datetime, timedelta
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from typing import List, Any
+from datetime import timedelta
+
+from datetime import datetime, timedelta
+orgid = ""
+API_KEY = ""
+
+
+
+def GetNthDayOfTheMonth(day):
+    today = datetime.today()
+    unix = time.mktime(datetime(today.year, today.month, day).timetuple())
+    return unix
+
+def GetLastDayOfTheMonth():
+    today = datetime.today()
+    return FirstDayOfNextMonth() - timedelta(days=1)
+
+def FirstDayOfNextMonth():
+    today = datetime.today()
+    return datetime(today.year, today.month + 1, 1)
+
+def GetCurrentMonthData(id, url, startDay, intervalDay):
+    endDay = startDay + intervalDay
+    LastDayOfTheMonth = GetLastDayOfTheMonth().day
+    responseList: List[Any] = []
+
+    while endDay <= LastDayOfTheMonth and startDay < LastDayOfTheMonth:
+        startDate = GetNthDayOfTheMonth(startDay)
+        endDate = GetNthDayOfTheMonth(endDay)
+        url = url.format(id, startDate, endDate)
+        response = requests.get(url=url, headers={'X-Cisco-Meraki-API-Key': API_KEY, 'Content-Type': 'application/json'})
+        responseList.append(response.json())
+
+
+        if startDay > LastDayOfTheMonth:
+            startDay = LastDayOfTheMonth
+
+        startDay = endDay + 1
+        endDay = startDay + intervalDay
+        if endDay > LastDayOfTheMonth:
+            endDay = LastDayOfTheMonth
+    print(responseList)
+    return responseList
+
+def SumCurrentMonthData(data):
+    for i in data
+
+
+
+GetCurrentMonthData('','https://api.meraki.com/api/v0/networks/{}/connectionStats?t0={}&t1={}',  1, 6)
+GetCurrentMonthData('','https://api.meraki.com/api/v0/networks/{}/connectionStats?t0={}&t1={}&ssid=0',  1, 6)
