@@ -4,109 +4,189 @@ import time
 import csv
 from datetime import date
 import smtplib, ssl
+from datetime import datetime, timedelta
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from typing import List, Any
+from datetime import timedelta
+from datetime import datetime, timedelta
+
+ORGID = ""
+API_KEY = "
+URL_DATA = "https://api.meraki.com/api/v0/networks/{}/connectionStats?t0={}&t1={}"
+URL_CUSTWIFIDATA="https://api.meraki.com/api/v0/networks/{}/connectionStats?t0={}&t1={}&ssid=0"
+URL_NETWORK = "https://api.meraki.com/api/v0/organizations/%s/networks"
 
 
-today = datetime.datetime.now()
-a = today + datetime.timedelta(hours=1)
-yesterday = a - datetime.timedelta(days=1)
-t = time.mktime((a.timetuple()))
-y = time.mktime((yesterday.timetuple()))
-orgid = ""
-api_key = ""
+def GetNthDayOfTheMonth(day):
+    today = datetime.today()
+    unix = time.mktime(datetime(today.year, today.month, day).timetuple())
+    return unix
 
+def GetLastDayOfTheMonth():
+    return (FirstDayOfNextMonth() - timedelta(days=1)).day
 
-def sendEmail(failedPercentage, site):
+def FirstDayOfNextMonth():
+    today = datetime.today()
+    year = today.year
+    month = today.month
 
-                subject = site + ' Wireless failures Above  ' + failedPercentage + '%'
-                body = ''' Good evening \n your network is shit'''
-                sender_email = ""
-                receiver_email = "k"
-                password = ''
+    if today.month == 12:
+        year = today.year + 1
+        month = 1
 
-                # Create a multipart message and set headers
-                message = MIMEMultipart()
-                message["From"] = sender_email
-                message["To"] = receiver_email
-                message["Subject"] = subject
-                message["Bcc"] = receiver_email  # Recommended for mass emails
+    return datetime(year, month, 1)
 
-                # Add body to email
-                message.attach(MIMEText(body, "plain"))
-
-                # Log in to server using secure context and send email
-                context = ssl.create_default_context()
-                with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
-                    server.login(sender_email, password)
-                    server.sendmail(sender_email, receiver_email.split((',')), message.as_string())
-
-
-def getNetWorkList():
+def GetNetworkList():
     # returns a list of all networks in an organization
     # on failure returns a single record with 'null' name and id
-    url = "https://api.meraki.com/api/v0/organizations/%s/networks" % (orgid)
-    response = requests.get(url=url, headers={'X-Cisco-Meraki-API-Key': api_key, 'Content-Type': 'application/json'})
-    return response
+    url = URL_NETWORK % (ORGID)
+    response = requests.get(url=url, headers={'X-Cisco-Meraki-API-Key': API_KEY, 'Content-Type': 'application/json'})
+    networkList: List[Any] = []
 
 
-def getdata(id):
-    url = "https://api.meraki.com/api/v0/networks/{}/connectionStats?t0={}&t1={}".format(id, y, t)
-    response = requests.get(url=url, headers={'X-Cisco-Meraki-API-Key': api_key, 'Content-Type': 'application/json'})
+
     return response.json()
 
+def GetCurrentMonthData(id, url, startDay, intervalDay):
+    endDay = startDay + intervalDay
+    LastDayOfTheMonth = GetLastDayOfTheMonth()
+    responseList: List[Any] = []
 
-def o2(id):
-    url = "https://api.meraki.com/api/v0/networks/{}/connectionStats?t0={}&t1={}&ssid=0".format(id, y, t)
-    response = requests.get(url=url, headers={'X-Cisco-Meraki-API-Key': api_key, 'Content-Type': 'application/json'})
-    return response.json()
+    while endDay <= LastDayOfTheMonth and startDay < LastDayOfTheMonth:
+        startDate = GetNthDayOfTheMonth(startDay)
+        endDate = GetNthDayOfTheMonth(endDay)
+        url = url.format(id, startDate, endDate)
+        response = requests.get(url=url, headers={'X-Cisco-Meraki-API-Key': API_KEY, 'Content-Type': 'application/json'})
+        responseList.append(response.json())
+
+        if startDay > LastDayOfTheMonth:
+            startDay = LastDayOfTheMonth
+
+        startDay = endDay + 1
+        endDay = startDay + intervalDay
+        if endDay > LastDayOfTheMonth:
+            endDay = LastDayOfTheMonth
+    return responseList
+
+def SumMonthlyData(data):
+    sumList: List[Any] = []
+    sumList.append({'assoc': 0, 'auth': 0, 'dhcp': 0, 'dns': 0, 'success': 0})
+
+    for i in data:
+        if i is None or 'assoc' not in i:
+            continue
+        sumList[0]['assoc'] += i['assoc']
+        sumList[0]['auth'] += i['auth']
+        sumList[0]['dhcp'] += i['dhcp']
+        sumList[0]['dns'] += i['dns']
+        sumList[0]['success'] += i['success']
+
+    return sumList[0]
+
+def SumMonthlyDataDifference(id):
+    data = GetCurrentMonthData(id, URL_DATA, 1, 6)
+    sumMonthlyData = SumMonthlyData(data)
+    custWifiData = GetCurrentMonthData(id, URL_CUSTWIFIDATA, 1, 6)
+    sumMonthlyCustWifiData = SumMonthlyData(custWifiData)
+
+    sumDifferenceList: List[Any] = []
+    sumDifferenceList.append({'assoc': 0, 'auth': 0, 'dhcp': 0, 'dns': 0, 'success': 0, 'failedPercentage':0, 'noOfFailure':0})
+
+    sumDifferenceList[0]['assoc'] = sumMonthlyData['assoc'] - sumMonthlyCustWifiData['assoc']
+    sumDifferenceList[0]['auth'] = sumMonthlyData['auth'] - sumMonthlyCustWifiData['auth']
+    sumDifferenceList[0]['dhcp'] = sumMonthlyData['dhcp'] - sumMonthlyCustWifiData['dhcp']
+    sumDifferenceList[0]['dns'] = sumMonthlyData['dns'] - sumMonthlyCustWifiData['dns']
+    sumDifferenceList[0]['success'] = sumMonthlyData['success'] - sumMonthlyCustWifiData['success']
+
+    total = sumDifferenceList[0]['assoc'] +  sumDifferenceList[0]['auth'] +  sumDifferenceList[0]['dhcp'] +  sumDifferenceList[0]['dns'] +  sumDifferenceList[0]['success']
+    noOfFailure = sumDifferenceList[0]['assoc'] +  sumDifferenceList[0]['auth'] + sumDifferenceList[0]['dhcp'] + sumDifferenceList[0]['dns']
+    if total == 0:
+        failedRate = 0
+    else:
+        failedRate = (noOfFailure / total * 100)
+    failedPercentage = '{0:.2f}'.format(failedRate)
+    sumDifferenceList[0]['failedPercentage'] = failedPercentage
+    sumDifferenceList[0]['noOfFailure'] = noOfFailure
+    print('Current Monthly Data', data)
+    print('Current Monthly Wifi', custWifiData)
+    print('Sum Monthly Data ', sumMonthlyData)
+    print('Sum Monthly WIfi ', sumMonthlyCustWifiData)
+    print('Difference ', sumDifferenceList)
+
+    return sumDifferenceList
 
 
-def main():
-    branch = getNetWorkList()
-    networks = branch.json()
-    startTime = today.now()
+def SendEmail():
+     with open(str(date.today()) + '.csv', 'r') as file:
+            subject = 'This is your monthly'
+            body = ''' Good evening \n This is your monthly'''
+            sender_email = ""
+            receiver_email = ""
+            password = ''
+
+            # Create a multipart message and set headers
+            message = MIMEMultipart()
+            message["From"] = sender_email
+            message["To"] = receiver_email
+            message["Subject"] = subject
+            message["Bcc"] = receiver_email  # Recommended for mass emails
+
+            # Add body to email
+            message.attach(MIMEText(body, "plain"))
+            file = date.today()
+
+            filename = "%s.csv" % (file)  # In same directory as script
+
+            # Open saved file in binary mode
+            with open(filename) as attachment:
+                # Add file as application/octet-stream
+                # Email client can usually download this automatically as attachment
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(attachment.read())
+
+            # Encode file in ASCII characters to send by email
+            encoders.encode_base64(part)
+
+            # Add header as key/value pair to attachment part
+            part.add_header(
+                "Content-Disposition",
+                f"attachment; filename= {filename}",
+            )
+
+            # Add attachment to message and convert message to string
+            message.attach(part)
+            text = message.as_string()
+
+            # Log in to server using secure context and send email
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+                server.login(sender_email, password)
+                server.sendmail(sender_email, receiver_email.split((',')), text)
+
+
+
+def Main():
+    startTime = datetime.now()
+
+    networkList = GetNetworkList()
 
     with open(str(date.today()) + '.csv', 'w', newline='') as f:
-        fieldnames = ['Site', 'Association', 'Authentication', 'DHCP', 'DNS', 'Total Failed Connections', 'Success',
+        fieldnames = ['Site', 'Association', 'Authentication', 'DHCP', 'DNS', 'Success', 'Total Failed Connections',
                       'Failed(%)']
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
 
-        for network in networks:
-            id = network['id']
-            detailsData = getdata(id)
-            site = network['name']
-            CustWIFI = o2(id)
+        for network in networkList:
+            print (network['id'])
+            data = SumMonthlyDataDifference(network['id'])
+            f.write('%s,%s,%s,%s,%s,%s,%s,%s\n' % (network['name'],data[0]['assoc'], data[0]['auth'], data[0]['dhcp'], data[0]['dns'], data[0]['success'], data[0]['noOfFailure'],  data[0]['failedPercentage']))
 
-            if detailsData == None or CustWIFI == None:
-                pass
-            elif 'assoc' in detailsData:
-                print(site)
-                print(detailsData)
-                print(CustWIFI)
+    SendEmail()
 
-                assoc = (detailsData['assoc']) - (CustWIFI['assoc'])
-                auth = (detailsData['auth'] - (CustWIFI['auth']))
-                dhcp = (detailsData['dhcp'] - CustWIFI['dhcp'])
-                dns = (detailsData['dns'] - CustWIFI['dns'])
-                success = (detailsData['success'] - CustWIFI['success'])
-                total = assoc + auth + dhcp + dns + success
-                noOfFailure = assoc + auth + dhcp + dns
-                failedRate = (noOfFailure / total * 100)
-                failedPercentage = '{0:.2f}'.format((noOfFailure / total * 100))
+    endTime = datetime.now()
 
-                f.write('%s,%s,%s,%s,%s,%s,%s,%s\n' % (site, assoc, auth, dhcp, dns, noOfFailure, success, failedPercentage))
-
-                if failedRate >= 30:
-                    sendEmail(failedPercentage, site)
-
-    endTime = today.now()
-    timeTaken = endTime - startTime
-
-    print('Time taken' + str(timeTaken))
-
-
-main()
+    print(endTime-startTime)
+Main()
